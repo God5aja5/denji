@@ -208,20 +208,32 @@ async def scrape_vehicle_details(vehicle_number, cookies):
         await context.add_cookies(fixed_cookies)
         page = await context.new_page()
         
-        # Navigate to the URL and wait for network idle
-        await page.goto(url, timeout=60000, wait_until="networkidle")
-        
-        # Wait for content to load
-        await page.wait_for_timeout(5000)
-        
-        # Get the page content
-        html = await page.content()
-        
-        # Take a screenshot for debugging
-        await page.screenshot(path=f"debug_{vehicle_number}.png")
-        
-        await browser.close()
-        return html, extract_vehicle_details(html)
+        try:
+            # Navigate to the URL with a longer timeout and simpler wait condition
+            await page.goto(url, timeout=120000, wait_until="domcontentloaded")
+            
+            # Wait for content to load
+            await page.wait_for_timeout(10000)
+            
+            # Get the page content
+            html = await page.content()
+            
+            # Take a screenshot for debugging
+            await page.screenshot(path=f"debug_{vehicle_number}.png")
+            
+            await browser.close()
+            return html, extract_vehicle_details(html)
+            
+        except Exception as e:
+            # If there's an error, try to get the current HTML content
+            try:
+                html = await page.content()
+                await page.screenshot(path=f"error_{vehicle_number}.png")
+                await browser.close()
+                return html, {"error": str(e)}
+            except:
+                await browser.close()
+                return "", {"error": str(e)}
 
 def send_to_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -273,9 +285,12 @@ async def main():
     send_to_telegram("=== ORIGINAL COOKIES RESULTS ===")
     
     # Send raw HTML file regardless of whether details were found
-    send_document_to_telegram("raw_response_original.html", f"Raw HTML Response (Original Cookies) for {VEHICLE_NUMBER}")
+    if html_orig:
+        send_document_to_telegram("raw_response_original.html", f"Raw HTML Response (Original Cookies) for {VEHICLE_NUMBER}")
     
-    if not details_orig:
+    if "error" in details_orig:
+        send_to_telegram(f"❌ Error with original cookies: {details_orig['error']}")
+    elif not details_orig:
         send_to_telegram("❌ No details found with original cookies. Check the HTML file for more information.")
     else:
         # Send parsed details as text
@@ -286,17 +301,25 @@ async def main():
     send_to_telegram("\n=== NEW COOKIES RESULTS ===")
     
     # Send raw HTML file regardless of whether details were found
-    send_document_to_telegram("raw_response_new.html", f"Raw HTML Response (New Cookies) for {VEHICLE_NUMBER}")
+    if html_new:
+        send_document_to_telegram("raw_response_new.html", f"Raw HTML Response (New Cookies) for {VEHICLE_NUMBER}")
     
-    if not details_new:
+    if "error" in details_new:
+        send_to_telegram(f"❌ Error with new cookies: {details_new['error']}")
+    elif not details_new:
         send_to_telegram("❌ No details found with new cookies. Check the HTML file for more information.")
     else:
         # Send parsed details as text
         message = f"✅ Vehicle Data for {VEHICLE_NUMBER} (New Cookies)\n\nParsed Details:\n{json.dumps(details_new, indent=2)}"
         send_to_telegram(message)
     
-    # Send debug screenshots
-    send_document_to_telegram(f"debug_{VEHICLE_NUMBER}.png", f"Debug screenshot for {VEHICLE_NUMBER}")
+    # Send debug screenshots if they exist
+    import os
+    if os.path.exists(f"debug_{VEHICLE_NUMBER}.png"):
+        send_document_to_telegram(f"debug_{VEHICLE_NUMBER}.png", f"Debug screenshot for {VEHICLE_NUMBER}")
+    
+    if os.path.exists(f"error_{VEHICLE_NUMBER}.png"):
+        send_document_to_telegram(f"error_{VEHICLE_NUMBER}.png", f"Error screenshot for {VEHICLE_NUMBER}")
     
     print("Process completed successfully!")
 
