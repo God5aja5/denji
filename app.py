@@ -1,17 +1,17 @@
 import re
 import asyncio
 import requests
+import json
 from playwright.async_api import async_playwright
 
 # Telegram credentials
 TELEGRAM_TOKEN = "7803713198:AAHNtjhBl4ecYyF3bwQZg3KG7JPv4dRiPoY"
 CHAT_ID = "7265489223"
-
 # Demo RC number (you can change this)
 VEHICLE_NUMBER = "MH12AB1234"
 
-# Your login cookies (JSON format)
-COOKIES = [
+# Full original cookies format
+COOKIES_ORIGINAL = [
     {
         "domain": ".vehicleinfo.app",
         "expirationDate": 1787824873,
@@ -19,7 +19,7 @@ COOKIES = [
         "httpOnly": False,
         "name": "_clck",
         "path": "/",
-        "sameSite": None,
+        "sameSite": "None",
         "secure": False,
         "session": False,
         "storeId": None,
@@ -32,7 +32,7 @@ COOKIES = [
         "httpOnly": False,
         "name": "FCNEC",
         "path": "/",
-        "sameSite": None,
+        "sameSite": "None",
         "secure": False,
         "session": False,
         "storeId": None,
@@ -45,7 +45,7 @@ COOKIES = [
         "httpOnly": False,
         "name": "_ga_KEN70KGZ0J",
         "path": "/",
-        "sameSite": None,
+        "sameSite": "None",
         "secure": False,
         "session": False,
         "storeId": None,
@@ -58,7 +58,7 @@ COOKIES = [
         "httpOnly": False,
         "name": "_gcl_au",
         "path": "/",
-        "sameSite": None,
+        "sameSite": "None",
         "secure": False,
         "session": False,
         "storeId": None,
@@ -71,7 +71,7 @@ COOKIES = [
         "httpOnly": False,
         "name": "_ga",
         "path": "/",
-        "sameSite": None,
+        "sameSite": "None",
         "secure": False,
         "session": False,
         "storeId": None,
@@ -84,7 +84,7 @@ COOKIES = [
         "httpOnly": False,
         "name": "_clsk",
         "path": "/",
-        "sameSite": None,
+        "sameSite": "None",
         "secure": False,
         "session": False,
         "storeId": None,
@@ -110,13 +110,41 @@ COOKIES = [
         "httpOnly": False,
         "name": "_ga_4X4MP71P5K",
         "path": "/",
-        "sameSite": None,
+        "sameSite": "None",
         "secure": False,
         "session": False,
         "storeId": None,
         "value": "GS2.1.s1756293688$o2$g1$t1756293774$j32$l0$h1356398435"
     }
 ]
+
+# New cookies format
+COOKIES_NEW = {
+    '_gcl_au': '1.1.1681696966.1756288859',
+    '_ga': 'GA1.1.1910824230.1756288859',
+    '_clck': '1gup526%5E2%5Efyt%5E0%5E2065',
+    '_fbp': 'fb.1.1756288873881.216321712474373516',
+    '_ga_4X4MP71P5K': 'GS2.1.s1756293688$o2$g1$t1756293728$j53$l0$h1356398435',
+    '_clsk': 'qeefe5%5E1756293734217%5E2%5E1%5Ej.clarity.ms%2Fcollect',
+    'FCNEC': '%5B%5B%22AKsRol_aQy95-lw1e9HRg6TIjlGgtsMCC2qqAES9mavStIbKd5e7SmuQEBO7ZOEcDSDE8XPo3DF4roAMtTehlcof_R4fFbmgh45BHIZSKlv0p65WWunDrBFmpz-zuiNj1HjE84aHu2BC7Hlv21-ACiL3UEhg6BQ9pQ%3D%3D%22%5D%5D',
+    '_ga_KEN70KGZ0J': 'GS2.1.s1756293694$o2$g1$t1756293736$j60$l0$h1390354998',
+}
+
+# Convert new cookies format to Playwright format
+def convert_cookies(cookies_dict):
+    converted = []
+    for name, value in cookies_dict.items():
+        converted.append({
+            "name": name,
+            "value": value,
+            "domain": ".vehicleinfo.app",
+            "path": "/",
+            "sameSite": "None",
+            "secure": False,
+            "httpOnly": False,
+            "expirationDate": 9999999999  # Far future expiration
+        })
+    return converted
 
 # Regex patterns for vehicle details
 def extract_vehicle_details(html):
@@ -145,7 +173,6 @@ def extract_vehicle_details(html):
         'cylinder_capacity': r'Cylinder Capacity\s*</div>\s*<div[^>]*>([^<]+)',
         'unladen_weight': r'Unload Weight\s*</div>\s*<div[^>]*>([^<]+)'
     }
-
     result = {}
     for key, pattern in patterns.items():
         match = re.search(pattern, html)
@@ -153,12 +180,21 @@ def extract_vehicle_details(html):
             result[key] = match.group(1).strip()
     return result
 
-async def scrape_vehicle_details(vehicle_number):
+async def scrape_vehicle_details(vehicle_number, cookies):
     url = f"https://vehicleinfo.app/rc-details/{vehicle_number}?rc_no={vehicle_number}"
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context()
-        await context.add_cookies(COOKIES)
+        
+        # Fix cookies if needed
+        fixed_cookies = []
+        for cookie in cookies:
+            fixed_cookie = cookie.copy()
+            if "sameSite" in fixed_cookie and fixed_cookie["sameSite"] is None:
+                fixed_cookie["sameSite"] = "None"
+            fixed_cookies.append(fixed_cookie)
+        
+        await context.add_cookies(fixed_cookies)
         page = await context.new_page()
         await page.goto(url, timeout=60000)
         await page.wait_for_timeout(7000)
@@ -169,15 +205,80 @@ async def scrape_vehicle_details(vehicle_number):
 def send_to_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": message}
-    requests.post(url, data=data)
+    response = requests.post(url, data=data)
+    return response.status_code == 200
 
 async def main():
-    html, details = await scrape_vehicle_details(VEHICLE_NUMBER)
-
-    if not details:
-        send_to_telegram("❌ No details found for the given RC number.")
+    # Convert new cookies format
+    converted_cookies = convert_cookies(COOKIES_NEW)
+    
+    # Scrape with original cookies
+    print("Scraping with original cookies...")
+    html_orig, details_orig = await scrape_vehicle_details(VEHICLE_NUMBER, COOKIES_ORIGINAL)
+    
+    # Scrape with new cookies
+    print("Scraping with new cookies...")
+    html_new, details_new = await scrape_vehicle_details(VEHICLE_NUMBER, converted_cookies)
+    
+    # Save results to files
+    print("Saving results to files...")
+    
+    # Original cookies results
+    with open("vehicle_details_original.json", "w") as f:
+        json.dump(details_orig, f, indent=4)
+    
+    with open("raw_response_original.html", "w") as f:
+        f.write(html_orig)
+    
+    # New cookies results
+    with open("vehicle_details_new.json", "w") as f:
+        json.dump(details_new, f, indent=4)
+    
+    with open("raw_response_new.html", "w") as f:
+        f.write(html_new)
+    
+    # Send results to Telegram
+    print("Sending results to Telegram...")
+    
+    # Original cookies results
+    if not details_orig:
+        send_to_telegram("❌ No details found with original cookies.")
     else:
-        send_to_telegram(f"✅ Vehicle Data for {VEHICLE_NUMBER}\n\nParsed:\n{details}\n\nRaw:\n{html[:1500]}...")
+        message = f"✅ Vehicle Data for {VEHICLE_NUMBER} (Original Cookies)\n\nParsed Details:\n{json.dumps(details_orig, indent=2)}"
+        send_to_telegram(message)
+        
+        # Send raw HTML in chunks if needed
+        if len(html_orig) > 4000:
+            send_to_telegram("Raw HTML (Original Cookies) - Part 1:")
+            send_to_telegram(html_orig[:4000])
+            send_to_telegram("Raw HTML (Original Cookies) - Part 2:")
+            send_to_telegram(html_orig[4000:8000])
+            if len(html_orig) > 8000:
+                send_to_telegram("Raw HTML (Original Cookies) - Part 3:")
+                send_to_telegram(html_orig[8000:])
+        else:
+            send_to_telegram(f"Raw HTML (Original Cookies):\n{html_orig}")
+    
+    # New cookies results
+    if not details_new:
+        send_to_telegram("❌ No details found with new cookies.")
+    else:
+        message = f"✅ Vehicle Data for {VEHICLE_NUMBER} (New Cookies)\n\nParsed Details:\n{json.dumps(details_new, indent=2)}"
+        send_to_telegram(message)
+        
+        # Send raw HTML in chunks if needed
+        if len(html_new) > 4000:
+            send_to_telegram("Raw HTML (New Cookies) - Part 1:")
+            send_to_telegram(html_new[:4000])
+            send_to_telegram("Raw HTML (New Cookies) - Part 2:")
+            send_to_telegram(html_new[4000:8000])
+            if len(html_new) > 8000:
+                send_to_telegram("Raw HTML (New Cookies) - Part 3:")
+                send_to_telegram(html_new[8000:])
+        else:
+            send_to_telegram(f"Raw HTML (New Cookies):\n{html_new}")
+    
+    print("Process completed successfully!")
 
 if __name__ == "__main__":
     asyncio.run(main())
