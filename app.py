@@ -97,7 +97,7 @@ COOKIES_ORIGINAL = [
         "httpOnly": False,
         "name": "_fbp",
         "path": "/",
-        "sameSite": "Lax",  # Fixed: "lax" changed to "Lax"
+        "sameSite": "Lax",
         "secure": False,
         "session": False,
         "storeId": None,
@@ -219,6 +219,17 @@ def send_to_telegram(message):
     response = requests.post(url, data=data)
     return response.status_code == 200
 
+def send_long_message_to_telegram(message, prefix=""):
+    # Telegram message limit is 4096 characters
+    max_length = 4000
+    if len(message) <= max_length:
+        send_to_telegram(prefix + message)
+    else:
+        # Split message into chunks
+        chunks = [message[i:i+max_length] for i in range(0, len(message), max_length)]
+        for i, chunk in enumerate(chunks):
+            send_to_telegram(f"{prefix}Part {i+1}/{len(chunks)}:\n{chunk}")
+
 async def main():
     # Convert new cookies format
     converted_cookies = convert_cookies(COOKIES_NEW)
@@ -252,42 +263,32 @@ async def main():
     print("Sending results to Telegram...")
     
     # Original cookies results
+    send_to_telegram("=== ORIGINAL COOKIES RESULTS ===")
+    
     if not details_orig:
         send_to_telegram("❌ No details found with original cookies.")
     else:
+        # Send parsed details
         message = f"✅ Vehicle Data for {VEHICLE_NUMBER} (Original Cookies)\n\nParsed Details:\n{json.dumps(details_orig, indent=2)}"
-        send_to_telegram(message)
+        send_long_message_to_telegram(message)
         
-        # Send raw HTML in chunks if needed
-        if len(html_orig) > 4000:
-            send_to_telegram("Raw HTML (Original Cookies) - Part 1:")
-            send_to_telegram(html_orig[:4000])
-            send_to_telegram("Raw HTML (Original Cookies) - Part 2:")
-            send_to_telegram(html_orig[4000:8000])
-            if len(html_orig) > 8000:
-                send_to_telegram("Raw HTML (Original Cookies) - Part 3:")
-                send_to_telegram(html_orig[8000:])
-        else:
-            send_to_telegram(f"Raw HTML (Original Cookies):\n{html_orig}")
+        # Send raw HTML
+        send_to_telegram("\n--- RAW HTML (Original Cookies) ---")
+        send_long_message_to_telegram(html_orig)
     
     # New cookies results
+    send_to_telegram("\n=== NEW COOKIES RESULTS ===")
+    
     if not details_new:
         send_to_telegram("❌ No details found with new cookies.")
     else:
+        # Send parsed details
         message = f"✅ Vehicle Data for {VEHICLE_NUMBER} (New Cookies)\n\nParsed Details:\n{json.dumps(details_new, indent=2)}"
-        send_to_telegram(message)
+        send_long_message_to_telegram(message)
         
-        # Send raw HTML in chunks if needed
-        if len(html_new) > 4000:
-            send_to_telegram("Raw HTML (New Cookies) - Part 1:")
-            send_to_telegram(html_new[:4000])
-            send_to_telegram("Raw HTML (New Cookies) - Part 2:")
-            send_to_telegram(html_new[4000:8000])
-            if len(html_new) > 8000:
-                send_to_telegram("Raw HTML (New Cookies) - Part 3:")
-                send_to_telegram(html_new[8000:])
-        else:
-            send_to_telegram(f"Raw HTML (New Cookies):\n{html_new}")
+        # Send raw HTML
+        send_to_telegram("\n--- RAW HTML (New Cookies) ---")
+        send_long_message_to_telegram(html_new)
     
     print("Process completed successfully!")
 
