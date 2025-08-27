@@ -219,16 +219,13 @@ def send_to_telegram(message):
     response = requests.post(url, data=data)
     return response.status_code == 200
 
-def send_long_message_to_telegram(message, prefix=""):
-    # Telegram message limit is 4096 characters
-    max_length = 4000
-    if len(message) <= max_length:
-        send_to_telegram(prefix + message)
-    else:
-        # Split message into chunks
-        chunks = [message[i:i+max_length] for i in range(0, len(message), max_length)]
-        for i, chunk in enumerate(chunks):
-            send_to_telegram(f"{prefix}Part {i+1}/{len(chunks)}:\n{chunk}")
+def send_document_to_telegram(file_path, caption=""):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+    with open(file_path, 'rb') as file:
+        files = {'document': file}
+        data = {"chat_id": CHAT_ID, "caption": caption}
+        response = requests.post(url, files=files, data=data)
+    return response.status_code == 200
 
 async def main():
     # Convert new cookies format
@@ -268,13 +265,12 @@ async def main():
     if not details_orig:
         send_to_telegram("❌ No details found with original cookies.")
     else:
-        # Send parsed details
+        # Send parsed details as text
         message = f"✅ Vehicle Data for {VEHICLE_NUMBER} (Original Cookies)\n\nParsed Details:\n{json.dumps(details_orig, indent=2)}"
-        send_long_message_to_telegram(message)
+        send_to_telegram(message)
         
-        # Send raw HTML
-        send_to_telegram("\n--- RAW HTML (Original Cookies) ---")
-        send_long_message_to_telegram(html_orig)
+        # Send raw HTML as file
+        send_document_to_telegram("raw_response_original.html", "Raw HTML Response (Original Cookies)")
     
     # New cookies results
     send_to_telegram("\n=== NEW COOKIES RESULTS ===")
@@ -282,13 +278,12 @@ async def main():
     if not details_new:
         send_to_telegram("❌ No details found with new cookies.")
     else:
-        # Send parsed details
+        # Send parsed details as text
         message = f"✅ Vehicle Data for {VEHICLE_NUMBER} (New Cookies)\n\nParsed Details:\n{json.dumps(details_new, indent=2)}"
-        send_long_message_to_telegram(message)
+        send_to_telegram(message)
         
-        # Send raw HTML
-        send_to_telegram("\n--- RAW HTML (New Cookies) ---")
-        send_long_message_to_telegram(html_new)
+        # Send raw HTML as file
+        send_document_to_telegram("raw_response_new.html", "Raw HTML Response (New Cookies)")
     
     print("Process completed successfully!")
 
