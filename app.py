@@ -1,48 +1,57 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
-import time
+import asyncio
+from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
+import requests
+
+# Telegram details
+BOT_TOKEN = "7803713198:AAHNtjhBl4ecYyF3bwQZg3KG7JPv4dRiPoY"
+CHAT_ID = "7265489223"
 
 # URL to visit
 url = "https://vehicleinfo.app/rc-details/MH12AB1234?rc_no=MH12AB1234"
 
-# Set Chrome options for headless mode
-options = Options()
-options.add_argument("--headless")  # Headless mode
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument("--disable-gpu")
+async def main():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(url)
+        await page.wait_for_timeout(5000)  # Wait 5 seconds
 
-# Start Chrome WebDriver
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        # Get full HTML content
+        html = await page.content()
 
-# Open the URL
-driver.get(url)
+        # Save HTML to file
+        file_path = "vehicle_details.html"
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(html)
 
-# Wait for page to fully load
-time.sleep(5)
+        # Parse details with BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+        details = {}
+        for row in soup.find_all("div", class_="flex justify-between"):
+            spans = row.find_all("span")
+            if len(spans) == 2:
+                key = spans[0].get_text(strip=True)
+                value = spans[1].get_text(strip=True)
+                details[key] = value
 
-# Get the page source
-html = driver.page_source
+        # Print extracted details
+        print("\nExtracted Vehicle Details:")
+        for k, v in details.items():
+            print(f"{k}: {v}")
 
-# Close the browser
-driver.quit()
+        # Send HTML file to Telegram
+        send_to_telegram(file_path)
 
-# Parse with BeautifulSoup
-soup = BeautifulSoup(html, "html.parser")
+        await browser.close()
 
-# Extract all details (vehicle info is inside <div> tags with labels and values)
-details = {}
-for row in soup.find_all("div", class_="flex justify-between"):  # These divs usually hold data pairs
-    spans = row.find_all("span")
-    if len(spans) == 2:
-        key = spans[0].get_text(strip=True)
-        value = spans[1].get_text(strip=True)
-        details[key] = value
+def send_to_telegram(file_path):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+    with open(file_path, "rb") as file:
+        response = requests.post(url, data={"chat_id": CHAT_ID}, files={"document": file})
+    if response.status_code == 200:
+        print("✅ HTML file sent to Telegram successfully!")
+    else:
+        print(f"❌ Failed to send file. Status: {response.status_code}, Response: {response.text}")
 
-# Print all extracted details
-for k, v in details.items():
-    print(f"{k}: {v}")
+asyncio.run(main())
