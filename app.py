@@ -10,7 +10,7 @@ CHAT_ID = "7265489223"
 # Demo RC number (you can change this)
 VEHICLE_NUMBER = "MH12AB1234"
 
-# Full original cookies format
+# Full original cookies format with fixed sameSite values
 COOKIES_ORIGINAL = [
     {
         "domain": ".vehicleinfo.app",
@@ -97,7 +97,7 @@ COOKIES_ORIGINAL = [
         "httpOnly": False,
         "name": "_fbp",
         "path": "/",
-        "sameSite": "lax",
+        "sameSite": "Lax",  # Fixed: "lax" changed to "Lax"
         "secure": False,
         "session": False,
         "storeId": None,
@@ -190,8 +190,19 @@ async def scrape_vehicle_details(vehicle_number, cookies):
         fixed_cookies = []
         for cookie in cookies:
             fixed_cookie = cookie.copy()
-            if "sameSite" in fixed_cookie and fixed_cookie["sameSite"] is None:
-                fixed_cookie["sameSite"] = "None"
+            if "sameSite" in fixed_cookie:
+                # Ensure sameSite is one of the allowed values
+                if fixed_cookie["sameSite"] is None:
+                    fixed_cookie["sameSite"] = "None"
+                elif isinstance(fixed_cookie["sameSite"], str):
+                    # Convert to proper case if needed
+                    same_site_value = fixed_cookie["sameSite"].lower()
+                    if same_site_value == "lax":
+                        fixed_cookie["sameSite"] = "Lax"
+                    elif same_site_value == "strict":
+                        fixed_cookie["sameSite"] = "Strict"
+                    elif same_site_value == "none":
+                        fixed_cookie["sameSite"] = "None"
             fixed_cookies.append(fixed_cookie)
         
         await context.add_cookies(fixed_cookies)
